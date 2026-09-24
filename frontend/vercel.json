@@ -1,0 +1,8 @@
+{
+    "rewrites": [
+        {
+            "source": "/api/:path*",
+            "destination": "https://govschemeai-ph6b.onrender.com/api/:path*"
+        }
+    ]
+}

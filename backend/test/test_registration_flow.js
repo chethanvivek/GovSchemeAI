@@ -13,7 +13,8 @@ async function runRegistrationVerification() {
       const url = new URL(path, baseUrl);
       const headers = {
         'Content-Type': 'application/json',
-        'Origin': origin
+        'Origin': origin,
+        'X-Forwarded-For': '203.0.113.195'
       };
 
       const req = http.request({
@@ -133,6 +134,23 @@ async function runRegistrationVerification() {
     }
     if (!weakPassRes.headers['access-control-allow-origin']) {
       throw new Error('CORS header access-control-allow-origin missing on 400 error response!');
+    }
+
+    // TEST 6: Verify health check, login, and proxy IP forwarding behind reverse proxy
+    console.log('\n[TEST 6] Testing GET /api/health and POST /api/auth/login with X-Forwarded-For');
+    const healthRes = await request('GET', '/api/health');
+    console.log('Health check status:', healthRes.status, 'Response:', healthRes.body);
+    if (healthRes.status !== 200 || healthRes.body.status !== 'healthy') {
+      throw new Error(`Health check failed behind reverse proxy, status: ${healthRes.status}`);
+    }
+
+    const loginRes = await request('POST', '/api/auth/login', {
+      email: testEmail,
+      password: testPassword
+    });
+    console.log('Login status behind proxy:', loginRes.status, 'User:', loginRes.body.data?.user?.email);
+    if (loginRes.status !== 200 || !loginRes.body.data?.token) {
+      throw new Error(`Login failed behind reverse proxy, status: ${loginRes.status}`);
     }
 
     console.log('\n======================================================');

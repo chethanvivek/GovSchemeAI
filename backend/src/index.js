@@ -20,6 +20,9 @@ const aiRoutes = require('./routes/aiRoutes');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// Trust reverse proxy (Render, Cloudflare, etc.) to resolve X-Forwarded-For properly for rate-limiting
+app.set('trust proxy', 1);
+
 // Security & Header hardening
 app.use(
   helmet({

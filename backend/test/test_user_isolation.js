@@ -131,7 +131,11 @@ async function testUserIsolation() {
   }
 }
 
-testUserIsolation().catch(err => {
-  console.error('Test failed:', err);
-  process.exit(1);
-});
+testUserIsolation()
+  .then(() => {
+    process.exit(0);
+  })
+  .catch(err => {
+    console.error('Test failed:', err);
+    process.exit(1);
+  });

@@ -17,7 +17,7 @@ function errorHandler(err, req, res, next) { // eslint-disable-line no-unused-va
   const statusCode = isDuplicate ? 409 : (err.statusCode || (res.statusCode && res.statusCode !== 200 ? res.statusCode : 500));
   const errorMessage = isDuplicate 
     ? 'An account with this email already exists. Please sign in instead.' 
-    : (err.message || 'An unexpected internal server error occurred');
+    : (err.message || 'Registration service error');
 
   res.status(statusCode).json({
     success: false,

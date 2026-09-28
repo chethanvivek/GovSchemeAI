@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { ShieldCheck, Mail, Lock, Eye, EyeOff, ArrowRight, AlertCircle } from 'lucide-react';
+import { ShieldCheck, Mail, Lock, Eye, EyeOff, ArrowRight, AlertCircle, RefreshCw } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 export default function LoginPage() {
@@ -12,13 +12,17 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+  const [isColdStart, setIsColdStart] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const from = location.state?.from?.pathname || '/dashboard';
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
+    if (e && e.preventDefault) {
+      e.preventDefault();
+    }
     setError('');
+    setIsColdStart(false);
 
     if (!email || !password) {
       setError('Please fill in both email and password.');
@@ -36,8 +40,23 @@ export default function LoginPage() {
       }
     } catch (err) {
       console.error('Login error:', err);
-      const msg = err.response?.data?.error || err.response?.data?.message || err.message || 'Invalid email or password. Please verify your credentials.';
-      setError(msg);
+      const status = err.response?.status;
+      const is502 = status === 502;
+      const isColdStartStatus = status === 502 || status === 503 || status === 504;
+      const isTimeout =
+        err.code === 'ECONNABORTED' ||
+        (err.message && err.message.toLowerCase().includes('timeout')) ||
+        (err.message && err.message.toLowerCase().includes('network error')) ||
+        (!err.response && Boolean(err.request));
+
+      if (is502 || isColdStartStatus || isTimeout) {
+        setIsColdStart(true);
+        setError('Server is waking up (cold start). Please retry in a few seconds.');
+      } else {
+        setIsColdStart(false);
+        const msg = err.response?.data?.error || err.response?.data?.message || err.message || 'Invalid email or password. Please verify your credentials.';
+        setError(msg);
+      }
     } finally {
       setLoading(false);
     }
@@ -61,9 +80,26 @@ export default function LoginPage() {
 
         {/* Error Alert */}
         {error && (
-          <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-start gap-2">
-            <AlertCircle className="w-4 h-4 text-rose-500 flex-shrink-0 mt-0.5" />
-            <span>{error}</span>
+          <div className={`p-3.5 rounded-xl text-xs flex items-start gap-2.5 shadow-xs border ${
+            isColdStart ? 'bg-amber-50 border-amber-200 text-amber-800' : 'bg-rose-50 border-rose-200 text-rose-700'
+          }`}>
+            <AlertCircle className={`w-4 h-4 flex-shrink-0 mt-0.5 ${isColdStart ? 'text-amber-600' : 'text-rose-500'}`} />
+            <div className="flex-1 space-y-2">
+              <p className="font-medium leading-relaxed">{error}</p>
+              {isColdStart && (
+                <div className="pt-1">
+                  <button
+                    type="button"
+                    onClick={handleSubmit}
+                    disabled={loading}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-semibold text-xs transition-colors shadow-xs disabled:opacity-50 cursor-pointer"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+                    Retry
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         )}
 

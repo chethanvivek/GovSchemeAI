@@ -74,18 +74,23 @@ if (process.env.NODE_ENV !== 'test') {
   app.use(morgan('dev'));
 }
 
-// Global General Rate Limiter
-app.use('/api', generalLimiter);
-
-// Health Check Endpoint
+// Health Check Endpoints (Placed before rate limiter as fast wakeup targets without DB hits)
 app.get('/api/health', (req, res) => {
   res.status(200).json({
     status: 'healthy',
-    timestamp: new Date().toISOString(),
-    postgres_connected: db.isPostgres(),
-    service: 'AI Government Scheme Recommender Backend'
+    timestamp: new Date().toISOString()
   });
 });
+
+app.get('/health', (req, res) => {
+  res.status(200).json({
+    status: 'healthy',
+    timestamp: new Date().toISOString()
+  });
+});
+
+// Global General Rate Limiter
+app.use('/api', generalLimiter);
 
 // API Routes
 app.use('/api/auth', authRoutes);
@@ -104,12 +109,17 @@ async function startServer(customPort) {
   try {
     await db.initDB();
     const port = customPort || process.env.PORT || 5000;
-    const server = app.listen(port, () => {
-      console.log(`====================================================`);
-      console.log(`  AI Government Scheme Recommender API Server       `);
-      console.log(`  Listening on http://localhost:${port}             `);
-      console.log(`  Environment: ${process.env.NODE_ENV || 'development'} `);
-      console.log(`====================================================`);
+    const server = await new Promise((resolve, reject) => {
+      const s = app.listen(port, '0.0.0.0', (err) => {
+        if (err) return reject(err);
+        console.log(`====================================================`);
+        console.log(`  AI Government Scheme Recommender API Server       `);
+        console.log(`  Listening on http://0.0.0.0:${port}               `);
+        console.log(`  Environment: ${process.env.NODE_ENV || 'development'} `);
+        console.log(`====================================================`);
+        resolve(s);
+      });
+      s.once('error', reject);
     });
     return server;
   } catch (err) {

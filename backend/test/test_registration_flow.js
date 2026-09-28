@@ -161,7 +161,11 @@ async function runRegistrationVerification() {
   }
 }
 
-runRegistrationVerification().catch(err => {
-  console.error('\nFAILED Verification:', err);
-  process.exit(1);
-});
+runRegistrationVerification()
+  .then(() => {
+    process.exit(0);
+  })
+  .catch(err => {
+    console.error('\nFAILED Verification:', err);
+    process.exit(1);
+  });

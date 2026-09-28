@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ShieldCheck, Mail, Lock, Eye, EyeOff, ArrowRight, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { ShieldCheck, Mail, Lock, Eye, EyeOff, ArrowRight, AlertCircle, CheckCircle2, RefreshCw } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 export default function RegisterPage() {
@@ -12,6 +12,7 @@ export default function RegisterPage() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+  const [isColdStart, setIsColdStart] = useState(false);
   const [loading, setLoading] = useState(false);
 
   // Validation checks
@@ -21,8 +22,11 @@ export default function RegisterPage() {
   const passwordsMatch = password && password === confirmPassword;
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
+    if (e && e.preventDefault) {
+      e.preventDefault();
+    }
     setError('');
+    setIsColdStart(false);
 
     if (!hasMinLength || !hasUppercase || !hasSpecialOrNum) {
       setError('Password must satisfy all security requirements: minimum 8 characters, 1 uppercase letter, and 1 number or special character.');
@@ -40,8 +44,23 @@ export default function RegisterPage() {
       navigate('/profile'); // Direct user to complete their demographic profile first
     } catch (err) {
       console.error('Registration error:', err);
-      const msg = err.response?.data?.error || err.response?.data?.message || err.message || 'Registration failed. Please try again.';
-      setError(msg);
+      const status = err.response?.status;
+      const is502 = status === 502;
+      const isColdStartStatus = status === 502 || status === 503 || status === 504;
+      const isTimeout =
+        err.code === 'ECONNABORTED' ||
+        (err.message && err.message.toLowerCase().includes('timeout')) ||
+        (err.message && err.message.toLowerCase().includes('network error')) ||
+        (!err.response && Boolean(err.request));
+
+      if (is502 || isColdStartStatus || isTimeout) {
+        setIsColdStart(true);
+        setError('Server is waking up (cold start). Please retry in a few seconds.');
+      } else {
+        setIsColdStart(false);
+        const msg = err.response?.data?.error || err.response?.data?.message || err.message || 'Registration failed. Please try again.';
+        setError(msg);
+      }
     } finally {
       setLoading(false);
     }
@@ -65,16 +84,32 @@ export default function RegisterPage() {
 
         {/* Error Alert */}
         {error && (
-          <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-start gap-2.5 shadow-xs">
-            <AlertCircle className="w-4 h-4 text-rose-500 flex-shrink-0 mt-0.5" />
-            <div className="flex-1 space-y-1">
+          <div className={`p-3.5 rounded-xl text-xs flex items-start gap-2.5 shadow-xs border ${
+            isColdStart ? 'bg-amber-50 border-amber-200 text-amber-800' : 'bg-rose-50 border-rose-200 text-rose-700'
+          }`}>
+            <AlertCircle className={`w-4 h-4 flex-shrink-0 mt-0.5 ${isColdStart ? 'text-amber-600' : 'text-rose-500'}`} />
+            <div className="flex-1 space-y-2">
               <p className="font-medium leading-relaxed">{error}</p>
-              <p className="text-[11px] text-rose-600">
-                Already registered?{' '}
-                <Link to="/login" className="font-bold underline hover:text-rose-800 transition-colors">
-                  Click here to Sign In
-                </Link>
-              </p>
+              {isColdStart ? (
+                <div className="pt-1">
+                  <button
+                    type="button"
+                    onClick={handleSubmit}
+                    disabled={loading}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-semibold text-xs transition-colors shadow-xs disabled:opacity-50 cursor-pointer"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+                    Retry
+                  </button>
+                </div>
+              ) : (
+                <p className="text-[11px] text-rose-600">
+                  Already registered?{' '}
+                  <Link to="/login" className="font-bold underline hover:text-rose-800 transition-colors">
+                    Click here to Sign In
+                  </Link>
+                </p>
+              )}
             </div>
           </div>
         )}

@@ -24,14 +24,53 @@ function generateToken(user) {
  */
 async function register(req, res, next) {
   try {
-    const { email, password } = req.body;
-    const cleanEmail = (email || '').trim().toLowerCase();
+    const { email, password } = req.body || {};
+
+    // 0. Validate input parameters
+    if (!email || typeof email !== 'string' || !password || typeof password !== 'string') {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid input parameters: email and password are required',
+        message: 'Invalid input parameters: email and password are required'
+      });
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      return res.status(400).json({
+        success: false,
+        error: 'A valid email address is required',
+        message: 'A valid email address is required'
+      });
+    }
+
+    // Helper: query with timeout protection to catch Supabase latency spikes before reverse proxy 502
+    const withTimeout = (promise, ms = 12000, opName = 'Database query') => {
+      let timer;
+      const timeoutPromise = new Promise((_, reject) => {
+        timer = setTimeout(() => {
+          const timeoutErr = new Error(`${opName} timed out after ${ms}ms`);
+          timeoutErr.name = 'TimeoutError';
+          timeoutErr.code = 'DB_TIMEOUT';
+          reject(timeoutErr);
+        }, ms);
+      });
+      return Promise.race([
+        promise.finally(() => clearTimeout(timer)),
+        timeoutPromise
+      ]);
+    };
 
     // 1. Check if user already exists
-    const existing = await db.query(
-      'SELECT id FROM users WHERE LOWER(TRIM(email)) = LOWER(TRIM($1))',
-      [cleanEmail]
+    const existing = await withTimeout(
+      db.query(
+        'SELECT id FROM users WHERE LOWER(TRIM(email)) = LOWER(TRIM($1))',
+        [cleanEmail]
+      ),
+      12000,
+      'User lookup'
     );
+
     if (existing && existing.rows && existing.rows.length > 0) {
       return res.status(409).json({
         success: false,
@@ -45,18 +84,30 @@ async function register(req, res, next) {
     const passwordHash = await bcrypt.hash(password, salt);
 
     // 3. Insert user into users table
-    const insertRes = await db.query(
-      'INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id, email, created_at',
-      [cleanEmail, passwordHash]
+    const insertRes = await withTimeout(
+      db.query(
+        'INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id, email, created_at',
+        [cleanEmail, passwordHash]
+      ),
+      12000,
+      'User creation'
     );
+
+    if (!insertRes || !insertRes.rows || insertRes.rows.length === 0) {
+      throw new Error('Registration failed: unable to create user record');
+    }
 
     const newUser = insertRes.rows[0];
 
-    // 4. Seed empty profile record in user_profiles / profiles
+    // 4. Seed empty profile record in user_profiles / profiles (non-blocking fallback)
     try {
-      await db.query(
-        'INSERT INTO profiles (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING',
-        [newUser.id]
+      await withTimeout(
+        db.query(
+          'INSERT INTO profiles (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING',
+          [newUser.id]
+        ),
+        5000,
+        'Profile seed'
       );
     } catch (profileSeedErr) {
       console.warn('[Register] Notice inserting into profiles:', profileSeedErr.message);
@@ -64,9 +115,13 @@ async function register(req, res, next) {
 
     try {
       // Also ensure user_profiles is populated if it's a separate base table
-      await db.query(
-        'INSERT INTO user_profiles (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING',
-        [newUser.id]
+      await withTimeout(
+        db.query(
+          'INSERT INTO user_profiles (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING',
+          [newUser.id]
+        ),
+        5000,
+        'User profiles seed'
       );
     } catch (upSeedErr) {
       // If user_profiles is an updatable view or already handled, this is expected
@@ -90,9 +145,9 @@ async function register(req, res, next) {
     });
   } catch (err) {
     // Catch exact error returned from Supabase when creating a user or inserting into users/user_profiles table
-    console.error('[Auth Register Error Stack]:', err.stack || err);
+    console.error('[Auth Register Error]:', err.stack || err);
 
-    // Check if the error is indeed a duplicate email/user (Supabase error code 23505 or Auth duplicate error)
+    // 1. Check for duplicate user email (code 23505 or duplicate message) -> 409 Conflict
     const isDuplicate =
       err.code === '23505' ||
       (err.message && (
@@ -113,11 +168,53 @@ async function register(req, res, next) {
       });
     }
 
-    // Database connection, missing tables, missing RLS policies, or missing environment variables
+    // 2. Check for invalid input / validation errors -> 400 Bad Request
+    const isBadRequest =
+      err.name === 'ZodError' ||
+      err.status === 400 ||
+      err.statusCode === 400 ||
+      (err.message && (
+        err.message.toLowerCase().includes('validation failed') ||
+        err.message.toLowerCase().includes('invalid input')
+      ));
+
+    if (isBadRequest) {
+      return res.status(400).json({
+        success: false,
+        error: err.message || 'Invalid input parameters',
+        message: err.message || 'Invalid input parameters'
+      });
+    }
+
+    // 3. Catch Supabase database query timeouts or connection latency
+    const isTimeout =
+      err.code === 'DB_TIMEOUT' ||
+      err.name === 'TimeoutError' ||
+      err.code === '57014' || // statement_timeout in Postgres
+      (err.message && (
+        err.message.toLowerCase().includes('timeout') ||
+        err.message.toLowerCase().includes('timed out') ||
+        err.message.toLowerCase().includes('connection terminated') ||
+        err.message.toLowerCase().includes('connection timeout') ||
+        err.message.toLowerCase().includes('econnrefused') ||
+        err.message.toLowerCase().includes('etimedout')
+      ));
+
+    if (isTimeout) {
+      const timeoutMsg = 'Database query timed out. The database is warming up or experiencing latency. Please retry shortly.';
+      return res.status(500).json({
+        success: false,
+        error: timeoutMsg,
+        message: timeoutMsg
+      });
+    }
+
+    // 4. Return clean 500 Internal Server Error so the frontend never receives an unhandled 502 Bad Gateway
+    const fallbackError = err.message || 'Registration service error';
     return res.status(500).json({
       success: false,
-      error: err.message || 'Internal server error during registration',
-      message: err.message || 'Internal server error during registration'
+      error: fallbackError,
+      message: fallbackError
     });
   }
 }

@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
-    "seed:schemes": "node seed_schemes.js"
+    "seed:schemes": "node seed_schemes.js",
+    "test": "node test/test_render_resilience.js && node test/test_registration_flow.js"
   },
   "keywords": [
     "government-schemes",

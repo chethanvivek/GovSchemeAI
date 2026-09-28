@@ -98,7 +98,10 @@ async function initDB() {
       console.log('Connecting to PostgreSQL / Supabase...');
       pool = new Pool({
         connectionString: dbUrl,
-        ssl: dbUrl.includes('localhost') ? false : { rejectUnauthorized: false }
+        ssl: dbUrl.includes('localhost') ? false : { rejectUnauthorized: false },
+        connectionTimeoutMillis: 10000, // 10s connection acquisition timeout
+        statement_timeout: 15000,       // 15s statement execution timeout
+        query_timeout: 15000            // 15s query timeout
       });
 
       const client = await pool.connect();

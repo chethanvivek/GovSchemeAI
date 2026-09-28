@@ -8,6 +8,7 @@ const generalLimiter = rateLimit({
   legacyHeaders: false,
   message: {
     success: false,
+    error: 'Too many requests from this IP. Please try again after 15 minutes.',
     message: 'Too many requests from this IP. Please try again after 15 minutes.'
   }
 });
@@ -20,6 +21,7 @@ const authLimiter = rateLimit({
   legacyHeaders: false,
   message: {
     success: false,
+    error: 'Too many authentication attempts. Please try again after 15 minutes.',
     message: 'Too many authentication attempts. Please try again after 15 minutes.'
   }
 });
@@ -32,6 +34,7 @@ const aiLimiter = rateLimit({
   legacyHeaders: false,
   message: {
     success: false,
+    error: 'AI query rate limit exceeded (Maximum 10 requests/minute). Please slow down.',
     message: 'AI query rate limit exceeded (Maximum 10 requests/minute). Please slow down.'
   }
 });

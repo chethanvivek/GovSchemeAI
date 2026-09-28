@@ -27,29 +27,51 @@ async function register(req, res, next) {
     const { email, password } = req.body;
     const cleanEmail = (email || '').trim().toLowerCase();
 
-    // Check if user already exists
+    // 1. Check if user already exists
     const existing = await db.query(
       'SELECT id FROM users WHERE LOWER(TRIM(email)) = LOWER(TRIM($1))',
       [cleanEmail]
     );
-    if (existing.rows.length > 0) {
+    if (existing && existing.rows && existing.rows.length > 0) {
       return res.status(409).json({
         success: false,
-        message: 'An account with this email address already exists'
+        error: 'An account with this email already exists. Please sign in instead.',
+        message: 'An account with this email already exists. Please sign in instead.'
       });
     }
 
-    // Hash password
+    // 2. Hash password
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(password, salt);
 
-    // Insert user
+    // 3. Insert user into users table
     const insertRes = await db.query(
       'INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id, email, created_at',
       [cleanEmail, passwordHash]
     );
 
     const newUser = insertRes.rows[0];
+
+    // 4. Seed empty profile record in user_profiles / profiles
+    try {
+      await db.query(
+        'INSERT INTO profiles (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING',
+        [newUser.id]
+      );
+    } catch (profileSeedErr) {
+      console.warn('[Register] Notice inserting into profiles:', profileSeedErr.message);
+    }
+
+    try {
+      // Also ensure user_profiles is populated if it's a separate base table
+      await db.query(
+        'INSERT INTO user_profiles (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING',
+        [newUser.id]
+      );
+    } catch (upSeedErr) {
+      // If user_profiles is an updatable view or already handled, this is expected
+    }
+
     const token = generateToken(newUser);
 
     // Set cookie
@@ -67,7 +89,36 @@ async function register(req, res, next) {
       }
     });
   } catch (err) {
-    next(err);
+    // Catch exact error returned from Supabase when creating a user or inserting into users/user_profiles table
+    console.error('[Auth Register Error Stack]:', err.stack || err);
+
+    // Check if the error is indeed a duplicate email/user (Supabase error code 23505 or Auth duplicate error)
+    const isDuplicate =
+      err.code === '23505' ||
+      (err.message && (
+        err.message.includes('23505') ||
+        err.message.toLowerCase().includes('duplicate key') ||
+        err.message.toLowerCase().includes('already exists') ||
+        err.message.toLowerCase().includes('already registered') ||
+        err.message.toLowerCase().includes('user already registered')
+      )) ||
+      err.status === 409 ||
+      err.statusCode === 409;
+
+    if (isDuplicate) {
+      return res.status(409).json({
+        success: false,
+        error: 'An account with this email already exists. Please sign in instead.',
+        message: 'An account with this email already exists. Please sign in instead.'
+      });
+    }
+
+    // Database connection, missing tables, missing RLS policies, or missing environment variables
+    return res.status(500).json({
+      success: false,
+      error: err.message || 'Internal server error during registration',
+      message: err.message || 'Internal server error during registration'
+    });
   }
 }
 
@@ -170,11 +221,13 @@ async function getMe(req, res, next) {
 
     let isProfileComplete = false;
     let completionPercentage = 0;
+    let hasProfileData = false;
     if (profile) {
       const requiredFields = ['age', 'state', 'occupation', 'annual_income', 'education_level', 'employment_status'];
       const filledCount = requiredFields.filter(f => profile[f] !== null && profile[f] !== undefined && profile[f] !== '').length;
       completionPercentage = Math.round((filledCount / requiredFields.length) * 100);
       isProfileComplete = filledCount === requiredFields.length;
+      hasProfileData = filledCount > 0;
     }
 
     return res.status(200).json({
@@ -186,8 +239,8 @@ async function getMe(req, res, next) {
           email: user.email,
           created_at: user.created_at
         },
-        profile,
-        has_profile: Boolean(profile),
+        profile: hasProfileData ? profile : null,
+        has_profile: hasProfileData,
         profileComplete: isProfileComplete,
         profile_complete: isProfileComplete,
         completion_percentage: completionPercentage

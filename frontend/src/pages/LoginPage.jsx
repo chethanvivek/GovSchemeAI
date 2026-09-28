@@ -36,7 +36,7 @@ export default function LoginPage() {
       }
     } catch (err) {
       console.error('Login error:', err);
-      const msg = err.response?.data?.message || 'Invalid email or password. Please verify your credentials.';
+      const msg = err.response?.data?.error || err.response?.data?.message || err.message || 'Invalid email or password. Please verify your credentials.';
       setError(msg);
     } finally {
       setLoading(false);

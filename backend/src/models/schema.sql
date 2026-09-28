@@ -27,6 +27,17 @@ CREATE TABLE IF NOT EXISTS profiles (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- 2b. User Profiles View (Compatibility Alias for Supabase user_profiles table queries)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.tables 
+        WHERE table_schema = 'public' AND table_name = 'user_profiles'
+    ) THEN
+        CREATE OR REPLACE VIEW user_profiles AS SELECT * FROM profiles;
+    END IF;
+END $$;
+
 -- 3. Schemes Table (Verified Government Schemes)
 CREATE TABLE IF NOT EXISTS schemes (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),

@@ -15,14 +15,17 @@ function validate(schema, source = 'body') {
           field: e.path.join('.'),
           message: e.message
         }));
+        const firstErrorMsg = errorMessages[0]?.message || 'Validation failed for request data';
         return res.status(400).json({
           success: false,
-          message: 'Validation failed for request data',
+          error: firstErrorMsg,
+          message: firstErrorMsg,
           errors: errorMessages
         });
       }
       return res.status(400).json({
         success: false,
+        error: 'Malformed request payload',
         message: 'Malformed request payload'
       });
     }

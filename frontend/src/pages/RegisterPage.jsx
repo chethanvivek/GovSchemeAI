@@ -40,7 +40,7 @@ export default function RegisterPage() {
       navigate('/profile'); // Direct user to complete their demographic profile first
     } catch (err) {
       console.error('Registration error:', err);
-      const msg = err.response?.data?.message || 'Registration failed. An account with this email may already exist.';
+      const msg = err.response?.data?.error || err.response?.data?.message || err.message || 'Registration failed. Please try again.';
       setError(msg);
     } finally {
       setLoading(false);
@@ -65,9 +65,17 @@ export default function RegisterPage() {
 
         {/* Error Alert */}
         {error && (
-          <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-start gap-2">
+          <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-start gap-2.5 shadow-xs">
             <AlertCircle className="w-4 h-4 text-rose-500 flex-shrink-0 mt-0.5" />
-            <span>{error}</span>
+            <div className="flex-1 space-y-1">
+              <p className="font-medium leading-relaxed">{error}</p>
+              <p className="text-[11px] text-rose-600">
+                Already registered?{' '}
+                <Link to="/login" className="font-bold underline hover:text-rose-800 transition-colors">
+                  Click here to Sign In
+                </Link>
+              </p>
+            </div>
           </div>
         )}
 

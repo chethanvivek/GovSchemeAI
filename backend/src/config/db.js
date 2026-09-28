@@ -118,6 +118,19 @@ async function initDB() {
         ALTER TABLE schemes ADD COLUMN IF NOT EXISTS last_updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW();
       `);
 
+      // Ensure user_profiles view exists for Supabase table compatibility
+      await client.query(`
+        DO $$
+        BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.tables 
+            WHERE table_schema = 'public' AND table_name = 'user_profiles'
+          ) THEN
+            CREATE OR REPLACE VIEW user_profiles AS SELECT * FROM profiles;
+          END IF;
+        END $$;
+      `);
+
       // Synchronize schemes table with expanded SEED_SCHEMES
       console.log(`Synchronizing ${SEED_SCHEMES.length} verified schemes into Supabase PostgreSQL...`);
       for (const scheme of SEED_SCHEMES) {
@@ -259,6 +272,13 @@ async function query(text, params = []) {
 
   if (normalized.startsWith('INSERT INTO users')) {
     const crypto = require('crypto');
+    const cleanEmail = String(params[0] || '').toLowerCase().trim();
+    const existing = data.users.find(u => u.email && u.email.toLowerCase().trim() === cleanEmail);
+    if (existing) {
+      const err = new Error('duplicate key value violates unique constraint "users_email_key"');
+      err.code = '23505';
+      throw err;
+    }
     const newUser = {
       id: crypto.randomUUID(),
       email: params[0],
@@ -270,15 +290,18 @@ async function query(text, params = []) {
     return { rows: [newUser], rowCount: 1 };
   }
 
-  // 3. Profiles
-  if (normalized.includes('FROM profiles WHERE user_id = $1')) {
+  // 3. Profiles / user_profiles
+  if (normalized.includes('FROM profiles WHERE user_id = $1') || normalized.includes('FROM user_profiles WHERE user_id = $1')) {
     const profile = data.profiles.find(p => p.user_id === params[0]);
     return { rows: profile ? [profile] : [], rowCount: profile ? 1 : 0 };
   }
 
-  if (normalized.includes('INSERT INTO profiles') || normalized.includes('ON CONFLICT (user_id)')) {
+  if (normalized.includes('INSERT INTO profiles') || normalized.includes('INSERT INTO user_profiles') || normalized.includes('ON CONFLICT (user_id)')) {
     const userId = params[0];
     const existingIndex = data.profiles.findIndex(p => p.user_id === userId);
+    if (normalized.includes('DO NOTHING') && existingIndex >= 0) {
+      return { rows: [data.profiles[existingIndex]], rowCount: 0 };
+    }
     const newProfile = {
       user_id: userId,
       age: params[1] !== undefined ? Number(params[1]) : null,

@@ -11,18 +11,20 @@ async function getProfile(req, res, next) {
 
     let completionPercentage = 0;
     let isProfileComplete = false;
+    let hasProfileData = false;
     if (profile) {
       const requiredFields = ['age', 'state', 'occupation', 'annual_income', 'education_level', 'employment_status'];
       const filledCount = requiredFields.filter(f => profile[f] !== null && profile[f] !== undefined && profile[f] !== '').length;
       completionPercentage = Math.round((filledCount / requiredFields.length) * 100);
       isProfileComplete = filledCount === requiredFields.length;
+      hasProfileData = filledCount > 0;
     }
 
     return res.status(200).json({
       success: true,
       profileComplete: isProfileComplete,
       data: {
-        profile,
+        profile: hasProfileData ? profile : null,
         profileComplete: isProfileComplete,
         completion_percentage: completionPercentage,
         is_complete: isProfileComplete

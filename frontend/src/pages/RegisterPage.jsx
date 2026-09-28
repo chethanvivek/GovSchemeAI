@@ -55,7 +55,7 @@ export default function RegisterPage() {
 
       if (is502 || isColdStartStatus || isTimeout) {
         setIsColdStart(true);
-        setError('Server is waking up (cold start). Please retry in a few seconds.');
+        setError('Server is waking up. Connecting...');
       } else {
         setIsColdStart(false);
         const msg = err.response?.data?.error || err.response?.data?.message || err.message || 'Registration failed. Please try again.';

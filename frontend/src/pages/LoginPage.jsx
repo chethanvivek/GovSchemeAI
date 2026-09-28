@@ -51,7 +51,7 @@ export default function LoginPage() {
 
       if (is502 || isColdStartStatus || isTimeout) {
         setIsColdStart(true);
-        setError('Server is waking up (cold start). Please retry in a few seconds.');
+        setError('Server is waking up. Connecting...');
       } else {
         setIsColdStart(false);
         const msg = err.response?.data?.error || err.response?.data?.message || err.message || 'Invalid email or password. Please verify your credentials.';

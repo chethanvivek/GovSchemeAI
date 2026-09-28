@@ -74,8 +74,8 @@ async function register(req, res, next) {
     if (existing && existing.rows && existing.rows.length > 0) {
       return res.status(409).json({
         success: false,
-        error: 'An account with this email already exists. Please sign in instead.',
-        message: 'An account with this email already exists. Please sign in instead.'
+        message: 'Email already registered. Please sign in instead.',
+        error: 'Email already registered. Please sign in instead.'
       });
     }
 
@@ -83,15 +83,37 @@ async function register(req, res, next) {
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(password, salt);
 
-    // 3. Insert user into users table
-    const insertRes = await withTimeout(
-      db.query(
-        'INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id, email, created_at',
-        [cleanEmail, passwordHash]
-      ),
-      12000,
-      'User creation'
-    );
+    // 3. Insert user into users table with dedicated try/catch error boundary
+    let insertRes;
+    try {
+      insertRes = await withTimeout(
+        db.query(
+          'INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id, email, created_at',
+          [cleanEmail, passwordHash]
+        ),
+        12000,
+        'User creation'
+      );
+    } catch (insertErr) {
+      console.warn('[Register User Insertion Error]:', insertErr.message || insertErr);
+      const isInsertDup =
+        insertErr.code === '23505' ||
+        (insertErr.message && (
+          insertErr.message.includes('23505') ||
+          insertErr.message.toLowerCase().includes('duplicate key') ||
+          insertErr.message.toLowerCase().includes('already exists') ||
+          insertErr.message.toLowerCase().includes('already registered')
+        ));
+
+      if (isInsertDup) {
+        return res.status(409).json({
+          success: false,
+          message: 'Email already registered. Please sign in instead.',
+          error: 'Email already registered. Please sign in instead.'
+        });
+      }
+      throw insertErr;
+    }
 
     if (!insertRes || !insertRes.rows || insertRes.rows.length === 0) {
       throw new Error('Registration failed: unable to create user record');
@@ -163,8 +185,8 @@ async function register(req, res, next) {
     if (isDuplicate) {
       return res.status(409).json({
         success: false,
-        error: 'An account with this email already exists. Please sign in instead.',
-        message: 'An account with this email already exists. Please sign in instead.'
+        message: 'Email already registered. Please sign in instead.',
+        error: 'Email already registered. Please sign in instead.'
       });
     }
 

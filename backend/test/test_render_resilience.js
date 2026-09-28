@@ -117,8 +117,8 @@ async function runRenderResilienceTests() {
       password: 'StrongPassword123!'
     });
     console.log('Duplicate status:', dupRes.status, 'Error:', dupRes.body.error);
-    if (dupRes.status !== 409 || !dupRes.body.error) {
-      throw new Error(`Expected 409 Conflict for duplicate email, got ${dupRes.status}`);
+    if (dupRes.status !== 409 || !dupRes.body.error || dupRes.body.message !== 'Email already registered. Please sign in instead.') {
+      throw new Error(`Expected 409 Conflict with 'Email already registered. Please sign in instead.', got status ${dupRes.status} and message '${dupRes.body.message}'`);
     }
 
     console.log('\n======================================================');

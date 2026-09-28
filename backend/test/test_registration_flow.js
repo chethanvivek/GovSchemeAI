@@ -103,8 +103,8 @@ async function runRegistrationVerification() {
     if (dupRes.status !== 409) {
       throw new Error(`Expected HTTP 409 Conflict for duplicate registration, received ${dupRes.status}`);
     }
-    if (dupRes.body.error !== 'An account with this email already exists. Please sign in instead.') {
-      throw new Error(`Expected exact error message 'An account with this email already exists. Please sign in instead.', received: '${dupRes.body.error}'`);
+    if (dupRes.body.message !== 'Email already registered. Please sign in instead.' && dupRes.body.error !== 'Email already registered. Please sign in instead.') {
+      throw new Error(`Expected exact error message 'Email already registered. Please sign in instead.', received: '${dupRes.body.message || dupRes.body.error}'`);
     }
     if (!dupRes.headers['access-control-allow-origin']) {
       throw new Error('CORS header access-control-allow-origin missing on 409 error response!');
